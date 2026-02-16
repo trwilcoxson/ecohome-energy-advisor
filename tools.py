@@ -5,7 +5,7 @@ Tools for EcoHome Energy Advisor Agent
 import glob as glob_module
 import math
 import os
-import random
+import random  # noqa: S311 — used for mock data, not cryptography
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -14,6 +14,7 @@ from langchain_community.document_loaders import TextLoader
 from langchain_core.tools import tool
 from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+
 from models.energy import DatabaseManager
 
 # Initialize database manager
@@ -30,13 +31,14 @@ def get_weather_forecast(location: str, days: int = 3) -> dict[str, Any]:
         days (int): Number of days to forecast (1-7)
 
     Returns:
-        Dict[str, Any]: Weather forecast data including temperature, conditions, and solar irradiance
+        Dict[str, Any]: Weather forecast data including temperature,
+            conditions, and solar irradiance
     """
     days = max(1, min(days, 7))
 
     # Seed based on location + date for reproducible but varied results
     seed = hash(location + datetime.now().strftime("%Y-%m-%d"))
-    rng = random.Random(seed)
+    rng = random.Random(seed)  # noqa: S311
 
     # Base temperature varies by location keyword
     base_temp = 18.0
@@ -91,7 +93,7 @@ def get_weather_forecast(location: str, days: int = 3) -> dict[str, Any]:
     # Generate hourly data for each day
     for day in range(days):
         day_condition = rng.choices(condition_names, weights=condition_probs, k=1)[0]
-        day_rng = random.Random(seed + day)
+        day_rng = random.Random(seed + day)  # noqa: S311
 
         for hour in range(24):
             # Temperature: sinusoidal curve, cool at night, warm midday

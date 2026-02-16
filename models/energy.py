@@ -24,7 +24,11 @@ class EnergyUsage(Base):
     cost_usd = Column(Float, nullable=True)  # Cost at time of usage
 
     def __repr__(self):
-        return f"<EnergyUsage(timestamp={self.timestamp}, consumption={self.consumption_kwh}kWh, device={self.device_name})>"
+        return (
+            f"<EnergyUsage(timestamp={self.timestamp}, "
+            f"consumption={self.consumption_kwh}kWh, "
+            f"device={self.device_name})>"
+        )
 
 
 class SolarGeneration(Base):
@@ -42,7 +46,11 @@ class SolarGeneration(Base):
     solar_irradiance = Column(Float, nullable=True)  # W/m²
 
     def __repr__(self):
-        return f"<SolarGeneration(timestamp={self.timestamp}, generation={self.generation_kwh}kWh, weather={self.weather_condition})>"
+        return (
+            f"<SolarGeneration(timestamp={self.timestamp}, "
+            f"generation={self.generation_kwh}kWh, "
+            f"weather={self.weather_condition})>"
+        )
 
 
 class DatabaseManager:
