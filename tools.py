@@ -1,16 +1,18 @@
 """
 Tools for EcoHome Energy Advisor Agent
 """
-import os
+
 import glob as glob_module
 import math
+import os
 import random
 from datetime import datetime, timedelta
-from typing import Dict, Any
-from langchain_core.tools import tool
+from typing import Any
+
 from langchain_chroma import Chroma
-from langchain_openai import OpenAIEmbeddings
 from langchain_community.document_loaders import TextLoader
+from langchain_core.tools import tool
+from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from models.energy import DatabaseManager
 
@@ -19,7 +21,7 @@ db_manager = DatabaseManager()
 
 
 @tool
-def get_weather_forecast(location: str, days: int = 3) -> Dict[str, Any]:
+def get_weather_forecast(location: str, days: int = 3) -> dict[str, Any]:
     """
     Get weather forecast for a specific location and number of days.
 
@@ -42,7 +44,9 @@ def get_weather_forecast(location: str, days: int = 3) -> Dict[str, Any]:
         base_temp = 30.0
     elif any(w in location.lower() for w in ["seattle", "portland", "minneapolis"]):
         base_temp = 10.0
-    elif any(w in location.lower() for w in ["san francisco", "los angeles", "san diego"]):
+    elif any(
+        w in location.lower() for w in ["san francisco", "los angeles", "san diego"]
+    ):
         base_temp = 20.0
 
     conditions_weights = [
@@ -65,7 +69,11 @@ def get_weather_forecast(location: str, days: int = 3) -> Dict[str, Any]:
     # Generate current conditions
     current_hour = datetime.now().hour
     current_condition = rng.choices(condition_names, weights=condition_probs, k=1)[0]
-    hour_temp_offset = 5.0 * math.sin(math.pi * (current_hour - 6) / 12) if 6 <= current_hour <= 18 else -3.0
+    hour_temp_offset = (
+        5.0 * math.sin(math.pi * (current_hour - 6) / 12)
+        if 6 <= current_hour <= 18
+        else -3.0
+    )
     current_temp = round(base_temp + hour_temp_offset + rng.uniform(-2, 2), 1)
 
     forecast = {
@@ -87,20 +95,30 @@ def get_weather_forecast(location: str, days: int = 3) -> Dict[str, Any]:
 
         for hour in range(24):
             # Temperature: sinusoidal curve, cool at night, warm midday
-            temp_offset = 7.0 * math.sin(math.pi * (hour - 6) / 12) if 6 <= hour <= 18 else -4.0
-            temp = round(base_temp + temp_offset + day_rng.uniform(-2, 2) + day * 0.5, 1)
+            temp_offset = (
+                7.0 * math.sin(math.pi * (hour - 6) / 12) if 6 <= hour <= 18 else -4.0
+            )
+            temp = round(
+                base_temp + temp_offset + day_rng.uniform(-2, 2) + day * 0.5, 1
+            )
 
             # Condition can vary slightly hour to hour
             if day_rng.random() < 0.7:
                 hour_condition = day_condition
             else:
-                hour_condition = day_rng.choices(condition_names, weights=condition_probs, k=1)[0]
+                hour_condition = day_rng.choices(
+                    condition_names, weights=condition_probs, k=1
+                )[0]
 
             # Solar irradiance: bell curve peaking at noon, modulated by weather
             if 6 <= hour <= 19:
                 solar_factor = math.sin(math.pi * (hour - 6) / 13)
                 solar_irradiance = round(
-                    1000 * solar_factor * irradiance_mult[hour_condition] * day_rng.uniform(0.85, 1.15), 1
+                    1000
+                    * solar_factor
+                    * irradiance_mult[hour_condition]
+                    * day_rng.uniform(0.85, 1.15),
+                    1,
                 )
             else:
                 solar_irradiance = 0.0
@@ -124,7 +142,7 @@ def get_weather_forecast(location: str, days: int = 3) -> Dict[str, Any]:
 
 
 @tool
-def get_electricity_prices(date: str = None) -> Dict[str, Any]:
+def get_electricity_prices(date: str = None) -> dict[str, Any]:
     """
     Get electricity prices for a specific date or current day.
 
@@ -141,7 +159,7 @@ def get_electricity_prices(date: str = None) -> Dict[str, Any]:
 
     hourly_rates = []
     for hour in range(24):
-        if 22 <= hour or hour < 6:
+        if hour >= 22 or hour < 6:
             # Off-peak: 10 PM - 6 AM
             rate = 0.08
             period = "off_peak"
@@ -187,7 +205,9 @@ def get_electricity_prices(date: str = None) -> Dict[str, Any]:
 
 
 @tool
-def query_energy_usage(start_date: str, end_date: str, device_type: str = None) -> Dict[str, Any]:
+def query_energy_usage(
+    start_date: str, end_date: str, device_type: str = None
+) -> dict[str, Any]:
     """
     Query energy usage data from the database for a specific date range.
 
@@ -235,7 +255,7 @@ def query_energy_usage(start_date: str, end_date: str, device_type: str = None) 
 
 
 @tool
-def query_solar_generation(start_date: str, end_date: str) -> Dict[str, Any]:
+def query_solar_generation(start_date: str, end_date: str) -> dict[str, Any]:
     """
     Query solar generation data from the database for a specific date range.
 
@@ -258,7 +278,9 @@ def query_solar_generation(start_date: str, end_date: str) -> Dict[str, Any]:
             "total_records": len(records),
             "total_generation_kwh": round(sum(r.generation_kwh for r in records), 2),
             "average_daily_generation": round(
-                sum(r.generation_kwh for r in records) / max(1, (end_dt - start_dt).days), 2
+                sum(r.generation_kwh for r in records)
+                / max(1, (end_dt - start_dt).days),
+                2,
             ),
             "records": [],
         }
@@ -280,7 +302,7 @@ def query_solar_generation(start_date: str, end_date: str) -> Dict[str, Any]:
 
 
 @tool
-def get_recent_energy_summary(hours: int = 24) -> Dict[str, Any]:
+def get_recent_energy_summary(hours: int = 24) -> dict[str, Any]:
     """
     Get a summary of recent energy usage and solar generation.
 
@@ -297,12 +319,16 @@ def get_recent_energy_summary(hours: int = 24) -> Dict[str, Any]:
         summary = {
             "time_period_hours": hours,
             "usage": {
-                "total_consumption_kwh": round(sum(r.consumption_kwh for r in usage_records), 2),
+                "total_consumption_kwh": round(
+                    sum(r.consumption_kwh for r in usage_records), 2
+                ),
                 "total_cost_usd": round(sum(r.cost_usd or 0 for r in usage_records), 2),
                 "device_breakdown": {},
             },
             "generation": {
-                "total_generation_kwh": round(sum(r.generation_kwh for r in generation_records), 2),
+                "total_generation_kwh": round(
+                    sum(r.generation_kwh for r in generation_records), 2
+                ),
                 "average_weather": "sunny" if generation_records else "unknown",
             },
         }
@@ -315,8 +341,12 @@ def get_recent_energy_summary(hours: int = 24) -> Dict[str, Any]:
                     "cost_usd": 0,
                     "records": 0,
                 }
-            summary["usage"]["device_breakdown"][device]["consumption_kwh"] += record.consumption_kwh
-            summary["usage"]["device_breakdown"][device]["cost_usd"] += record.cost_usd or 0
+            summary["usage"]["device_breakdown"][device]["consumption_kwh"] += (
+                record.consumption_kwh
+            )
+            summary["usage"]["device_breakdown"][device]["cost_usd"] += (
+                record.cost_usd or 0
+            )
             summary["usage"]["device_breakdown"][device]["records"] += 1
 
         for device_data in summary["usage"]["device_breakdown"].values():
@@ -329,7 +359,7 @@ def get_recent_energy_summary(hours: int = 24) -> Dict[str, Any]:
 
 
 @tool
-def search_energy_tips(query: str, max_results: int = 5) -> Dict[str, Any]:
+def search_energy_tips(query: str, max_results: int = 5) -> dict[str, Any]:
     """
     Search for energy-saving tips and best practices using RAG.
 
@@ -357,7 +387,9 @@ def search_energy_tips(query: str, max_results: int = 5) -> Dict[str, Any]:
                 docs = loader.load()
                 documents.extend(docs)
 
-            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=1000, chunk_overlap=200
+            )
             splits = text_splitter.split_documents(documents)
 
             vectorstore = Chroma.from_documents(
@@ -385,7 +417,11 @@ def search_energy_tips(query: str, max_results: int = 5) -> Dict[str, Any]:
                     "rank": i + 1,
                     "content": doc.page_content,
                     "source": doc.metadata.get("source", "unknown"),
-                    "relevance_score": "high" if i < 2 else "medium" if i < 4 else "low",
+                    "relevance_score": "high"
+                    if i < 2
+                    else "medium"
+                    if i < 4
+                    else "low",
                 }
             )
 
@@ -400,7 +436,7 @@ def calculate_energy_savings(
     current_usage_kwh: float,
     optimized_usage_kwh: float,
     price_per_kwh: float = 0.12,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Calculate potential energy savings from optimization.
 
@@ -415,7 +451,9 @@ def calculate_energy_savings(
     """
     savings_kwh = current_usage_kwh - optimized_usage_kwh
     savings_usd = savings_kwh * price_per_kwh
-    savings_percentage = (savings_kwh / current_usage_kwh) * 100 if current_usage_kwh > 0 else 0
+    savings_percentage = (
+        (savings_kwh / current_usage_kwh) * 100 if current_usage_kwh > 0 else 0
+    )
 
     return {
         "device_type": device_type,
