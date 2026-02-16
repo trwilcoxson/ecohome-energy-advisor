@@ -2,6 +2,8 @@
 Tools for EcoHome Energy Advisor Agent
 """
 
+from __future__ import annotations
+
 import glob as glob_module
 import math
 import os
@@ -14,6 +16,7 @@ from langchain_community.document_loaders import TextLoader
 from langchain_core.tools import tool
 from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from pydantic import SecretStr
 
 from models.energy import DatabaseManager
 
@@ -78,17 +81,7 @@ def get_weather_forecast(location: str, days: int = 3) -> dict[str, Any]:
     )
     current_temp = round(base_temp + hour_temp_offset + rng.uniform(-2, 2), 1)
 
-    forecast = {
-        "location": location,
-        "forecast_days": days,
-        "current": {
-            "temperature_c": current_temp,
-            "condition": current_condition,
-            "humidity": rng.randint(30, 80),
-            "wind_speed": round(rng.uniform(2, 25), 1),
-        },
-        "hourly": [],
-    }
+    hourly_data: list[dict[str, Any]] = []
 
     # Generate hourly data for each day
     for day in range(days):
@@ -128,7 +121,7 @@ def get_weather_forecast(location: str, days: int = 3) -> dict[str, Any]:
             humidity = rng.randint(35, 85)
             wind_speed = round(day_rng.uniform(2, 20), 1)
 
-            forecast["hourly"].append(
+            hourly_data.append(
                 {
                     "day": day,
                     "hour": hour,
@@ -140,11 +133,23 @@ def get_weather_forecast(location: str, days: int = 3) -> dict[str, Any]:
                 }
             )
 
+    forecast: dict[str, Any] = {
+        "location": location,
+        "forecast_days": days,
+        "current": {
+            "temperature_c": current_temp,
+            "condition": current_condition,
+            "humidity": rng.randint(30, 80),
+            "wind_speed": round(rng.uniform(2, 25), 1),
+        },
+        "hourly": hourly_data,
+    }
+
     return forecast
 
 
 @tool
-def get_electricity_prices(date: str = None) -> dict[str, Any]:
+def get_electricity_prices(date: str | None = None) -> dict[str, Any]:
     """
     Get electricity prices for a specific date or current day.
 
@@ -208,7 +213,7 @@ def get_electricity_prices(date: str = None) -> dict[str, Any]:
 
 @tool
 def query_energy_usage(
-    start_date: str, end_date: str, device_type: str = None
+    start_date: str, end_date: str, device_type: str | None = None
 ) -> dict[str, Any]:
     """
     Query energy usage data from the database for a specific date range.
@@ -230,18 +235,9 @@ def query_energy_usage(
         if device_type:
             records = [r for r in records if r.device_type == device_type]
 
-        usage_data = {
-            "start_date": start_date,
-            "end_date": end_date,
-            "device_type": device_type,
-            "total_records": len(records),
-            "total_consumption_kwh": round(sum(r.consumption_kwh for r in records), 2),
-            "total_cost_usd": round(sum(r.cost_usd or 0 for r in records), 2),
-            "records": [],
-        }
-
+        record_list: list[dict[str, Any]] = []
         for record in records:
-            usage_data["records"].append(
+            record_list.append(
                 {
                     "timestamp": record.timestamp.isoformat(),
                     "consumption_kwh": record.consumption_kwh,
@@ -250,6 +246,16 @@ def query_energy_usage(
                     "cost_usd": record.cost_usd,
                 }
             )
+
+        usage_data: dict[str, Any] = {
+            "start_date": start_date,
+            "end_date": end_date,
+            "device_type": device_type,
+            "total_records": len(records),
+            "total_consumption_kwh": round(sum(r.consumption_kwh for r in records), 2),
+            "total_cost_usd": round(sum(r.cost_usd or 0 for r in records), 2),
+            "records": record_list,
+        }
 
         return usage_data
     except Exception as e:
@@ -274,7 +280,19 @@ def query_solar_generation(start_date: str, end_date: str) -> dict[str, Any]:
 
         records = db_manager.get_generation_by_date_range(start_dt, end_dt)
 
-        generation_data = {
+        record_list: list[dict[str, Any]] = []
+        for record in records:
+            record_list.append(
+                {
+                    "timestamp": record.timestamp.isoformat(),
+                    "generation_kwh": record.generation_kwh,
+                    "weather_condition": record.weather_condition,
+                    "temperature_c": record.temperature_c,
+                    "solar_irradiance": record.solar_irradiance,
+                }
+            )
+
+        generation_data: dict[str, Any] = {
             "start_date": start_date,
             "end_date": end_date,
             "total_records": len(records),
@@ -284,19 +302,8 @@ def query_solar_generation(start_date: str, end_date: str) -> dict[str, Any]:
                 / max(1, (end_dt - start_dt).days),
                 2,
             ),
-            "records": [],
+            "records": record_list,
         }
-
-        for record in records:
-            generation_data["records"].append(
-                {
-                    "timestamp": record.timestamp.isoformat(),
-                    "generation_kwh": record.generation_kwh,
-                    "weather_condition": record.weather_condition,
-                    "temperature_c": record.temperature_c,
-                    "solar_irradiance": record.solar_irradiance,
-                }
-            )
 
         return generation_data
     except Exception as e:
@@ -318,14 +325,34 @@ def get_recent_energy_summary(hours: int = 24) -> dict[str, Any]:
         usage_records = db_manager.get_recent_usage(hours)
         generation_records = db_manager.get_recent_generation(hours)
 
-        summary = {
+        device_breakdown: dict[str, dict[str, float | int]] = {}
+
+        for record in usage_records:
+            device = record.device_type or "unknown"
+            if device not in device_breakdown:
+                device_breakdown[device] = {
+                    "consumption_kwh": 0,
+                    "cost_usd": 0,
+                    "records": 0,
+                }
+            device_breakdown[device]["consumption_kwh"] += record.consumption_kwh
+            device_breakdown[device]["cost_usd"] += record.cost_usd or 0
+            device_breakdown[device]["records"] += 1
+
+        for device_data in device_breakdown.values():
+            device_data["consumption_kwh"] = round(
+                float(device_data["consumption_kwh"]), 2
+            )
+            device_data["cost_usd"] = round(float(device_data["cost_usd"]), 2)
+
+        summary: dict[str, Any] = {
             "time_period_hours": hours,
             "usage": {
                 "total_consumption_kwh": round(
                     sum(r.consumption_kwh for r in usage_records), 2
                 ),
                 "total_cost_usd": round(sum(r.cost_usd or 0 for r in usage_records), 2),
-                "device_breakdown": {},
+                "device_breakdown": device_breakdown,
             },
             "generation": {
                 "total_generation_kwh": round(
@@ -334,26 +361,6 @@ def get_recent_energy_summary(hours: int = 24) -> dict[str, Any]:
                 "average_weather": "sunny" if generation_records else "unknown",
             },
         }
-
-        for record in usage_records:
-            device = record.device_type or "unknown"
-            if device not in summary["usage"]["device_breakdown"]:
-                summary["usage"]["device_breakdown"][device] = {
-                    "consumption_kwh": 0,
-                    "cost_usd": 0,
-                    "records": 0,
-                }
-            summary["usage"]["device_breakdown"][device]["consumption_kwh"] += (
-                record.consumption_kwh
-            )
-            summary["usage"]["device_breakdown"][device]["cost_usd"] += (
-                record.cost_usd or 0
-            )
-            summary["usage"]["device_breakdown"][device]["records"] += 1
-
-        for device_data in summary["usage"]["device_breakdown"].values():
-            device_data["consumption_kwh"] = round(device_data["consumption_kwh"], 2)
-            device_data["cost_usd"] = round(device_data["cost_usd"], 2)
 
         return summary
     except Exception as e:
@@ -378,7 +385,7 @@ def search_energy_tips(query: str, max_results: int = 5) -> dict[str, Any]:
             os.makedirs(persist_directory)
 
         embeddings = OpenAIEmbeddings(
-            api_key=os.getenv("OPENAI_API_KEY"),
+            api_key=SecretStr(os.getenv("OPENAI_API_KEY", "")),
         )
 
         if not os.path.exists(os.path.join(persist_directory, "chroma.sqlite3")):
@@ -407,14 +414,9 @@ def search_energy_tips(query: str, max_results: int = 5) -> dict[str, Any]:
 
         docs = vectorstore.similarity_search(query, k=max_results)
 
-        results = {
-            "query": query,
-            "total_results": len(docs),
-            "tips": [],
-        }
-
+        tips: list[dict[str, Any]] = []
         for i, doc in enumerate(docs):
-            results["tips"].append(
+            tips.append(
                 {
                     "rank": i + 1,
                     "content": doc.page_content,
@@ -426,6 +428,12 @@ def search_energy_tips(query: str, max_results: int = 5) -> dict[str, Any]:
                     else "low",
                 }
             )
+
+        results: dict[str, Any] = {
+            "query": query,
+            "total_results": len(docs),
+            "tips": tips,
+        }
 
         return results
     except Exception as e:

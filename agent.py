@@ -1,9 +1,13 @@
+from __future__ import annotations
+
 import os
+from typing import Any
 
 from dotenv import load_dotenv
 from langchain_core.messages import SystemMessage
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
+from pydantic import SecretStr
 
 from tools import TOOL_KIT
 
@@ -17,7 +21,7 @@ class Agent:
         llm = ChatOpenAI(
             model=model,
             temperature=0.0,
-            api_key=os.getenv("OPENAI_API_KEY"),
+            api_key=SecretStr(os.getenv("OPENAI_API_KEY", "")),
         )
 
         # Create the Energy Advisor agent
@@ -28,7 +32,7 @@ class Agent:
             tools=TOOL_KIT,
         )
 
-    def invoke(self, question: str, context: str = None) -> str:
+    def invoke(self, question: str, context: str | None = None) -> dict[str, Any]:
         """
         Ask the Energy Advisor a question about energy optimization.
 

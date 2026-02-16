@@ -2,13 +2,19 @@
 Energy data models for EcoHome Energy Advisor
 """
 
+from __future__ import annotations
+
 from datetime import datetime
 
 from sqlalchemy import Column, DateTime, Float, Integer, String, create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    sessionmaker,
+)
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    pass
 
 
 class EnergyUsage(Base):
@@ -76,9 +82,9 @@ class DatabaseManager:
         self,
         timestamp: datetime,
         consumption_kwh: float,
-        device_type: str = None,
-        device_name: str = None,
-        cost_usd: float = None,
+        device_type: str | None = None,
+        device_name: str | None = None,
+        cost_usd: float | None = None,
     ):
         """Add energy usage record"""
         session = self.get_session()
@@ -100,9 +106,9 @@ class DatabaseManager:
         self,
         timestamp: datetime,
         generation_kwh: float,
-        weather_condition: str = None,
-        temperature_c: float = None,
-        solar_irradiance: float = None,
+        weather_condition: str | None = None,
+        temperature_c: float | None = None,
+        solar_irradiance: float | None = None,
     ):
         """Add solar generation record"""
         session = self.get_session()
