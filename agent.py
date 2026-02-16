@@ -1,0 +1,60 @@
+import os
+from dotenv import load_dotenv
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import SystemMessage
+from langgraph.prebuilt import create_react_agent
+from tools import TOOL_KIT
+
+load_dotenv()
+
+
+class Agent:
+    def __init__(self, instructions: str, model: str = "gpt-4o-mini"):
+
+        # Initialize the LLM
+        llm = ChatOpenAI(
+            model=model,
+            temperature=0.0,
+            api_key=os.getenv("OPENAI_API_KEY"),
+        )
+
+        # Create the Energy Advisor agent
+        self.graph = create_react_agent(
+            name="energy_advisor",
+            prompt=SystemMessage(content=instructions),
+            model=llm,
+            tools=TOOL_KIT,
+        )
+
+    def invoke(self, question: str, context: str = None) -> str:
+        """
+        Ask the Energy Advisor a question about energy optimization.
+
+        Args:
+            question (str): The user's question about energy optimization
+            context (str): Optional context for the question
+
+        Returns:
+            dict: The agent's response with recommendations
+        """
+
+        messages = []
+        if context:
+            messages.append(("system", context))
+
+        messages.append(("user", question))
+
+        try:
+            response = self.graph.invoke(input={"messages": messages})
+            return response
+        except Exception as e:
+            return {
+                "messages": [
+                    SystemMessage(content=f"Error processing request: {str(e)}")
+                ],
+                "error": str(e),
+            }
+
+    def get_agent_tools(self):
+        """Get list of available tools for the Energy Advisor"""
+        return [t.name for t in TOOL_KIT]
